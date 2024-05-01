@@ -1,0 +1,866 @@
+model: {
+  second: {
+    voxel_generator {
+      point_cloud_range : [0, -40, -3, 70.4, 40, 1]
+      # point_cloud_range : [0, -32.0, -3, 52.8, 32.0, 1]
+      voxel_size : [0.05, 0.05, 0.1]   # original is 0.05,0.05,0.1
+      max_number_of_points_per_voxel : 5   # original is 5
+    }
+
+    voxel_feature_extractor: {
+      module_class_name: "VoxelFeatureExtractorV3"
+      num_filters: [16]
+      with_distance: false
+      num_input_features: 4
+    }
+    middle_feature_extractor: {
+      module_class_name: "SpMiddleFHD"
+      # num_filters_down1: [] # protobuf don't support empty list.
+      # num_filters_down2: []
+      downsample_factor: 8
+      num_input_features: 4
+    }
+    rpn: {
+      module_class_name: "RPNV2"
+      layer_nums: [5, 5]
+      layer_strides: [1, 2]
+      num_filters: [128, 256]
+      upsample_strides: [1, 2]
+      num_upsample_filters: [256, 256]
+      use_groupnorm: false
+      num_groups: 32
+      num_input_features: 128
+    }
+    loss: {
+      classification_loss: {
+        weighted_sigmoid_focal: {
+          alpha: 0.25
+          gamma: 2.0
+          anchorwise_output: true
+        }
+      }
+      localization_loss: {
+        weighted_smooth_l1: {
+          sigma: 3.0
+          code_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+        }
+      }
+      classification_weight: 1.0   #original 1.0
+      localization_weight: 2.0
+    }
+    # Outputs
+    use_sigmoid_score: true
+    encode_background_as_zeros: true
+    encode_rad_error_by_sin: true
+
+    use_direction_classifier: true # this can help for orientation benchmark
+    direction_loss_weight: 0.2 # enough.
+    use_aux_classifier: false
+    # Loss
+    pos_class_weight: 1.0
+    neg_class_weight: 1.0
+
+    loss_norm_type: NormByNumPositives
+    # Postprocess
+    post_center_limit_range: [0, -40, -3.0, 70.4, 40, 0.0]
+    use_rotate_nms: true
+    use_multi_class_nms: false
+    nms_pre_max_size: 1000
+    nms_post_max_size: 100
+    nms_score_threshold: 0.2
+    nms_iou_threshold: 0.01
+
+    use_bev: false
+    num_point_features: 4
+    without_reflectivity: false
+    box_coder: {
+      ground_box3d_coder: {
+        linear_dim: false
+        encode_angle_vector: false
+      }
+    }
+    target_assigner: {
+      anchor_generators: {
+        anchor_generator_range: {
+          sizes: [1.6, 3.9, 1.56] # wlh
+          anchor_ranges: [0, -40.0, -1.78, 70.4, 40.0, -1.78] # carefully set z center, the original one is -1.78
+          rotations: [0, 1.57] # DON'T modify this unless you are very familiar with my code.
+          matched_threshold : 0.6
+          unmatched_threshold : 0.45
+          class_name: "Car"
+        }
+      }
+      sample_positive_fraction : -1
+      sample_size : 512
+      region_similarity_calculator: {
+        nearest_iou_similarity: {
+        }
+      }
+    }
+  }
+}
+
+
+train_input_reader: {
+  max_num_epochs : 160
+  batch_size: 1
+  prefetch_size : 25
+  max_number_of_voxels: 16000 # to support batchsize=2 in 1080Ti, original 16000
+  shuffle_points: true
+  num_workers: 3
+  groundtruth_localization_noise_std: [1.0, 1.0, 0.5]
+  # groundtruth_rotation_uniform_noise: [-0.3141592654, 0.3141592654]
+  # groundtruth_rotation_uniform_noise: [-1.57, 1.57]
+  groundtruth_rotation_uniform_noise: [-0.78539816, 0.78539816]
+  global_rotation_uniform_noise: [-0.78539816, 0.78539816]
+  global_scaling_uniform_noise: [0.95, 1.05]
+  global_random_rotation_range_per_object: [0, 0] # pi/4 ~ 3pi/4
+  anchor_area_threshold: -1
+  remove_points_after_sample: true
+  groundtruth_points_drop_percentage: 0.0
+  groundtruth_drop_max_keep_points: 15
+  database_sampler {
+    database_info_path: "/data/public/uestc8/KITTI_DATASET/kitti_dbinfos_train.pkl"
+    sample_groups {
+      name_to_max_num {
+        key: "Car"
+        value: 15
+      }
+    }
+    database_prep_steps {
+      filter_by_min_num_points {
+        min_num_point_pairs {
+          key: "Car"
+          value: 5
+        }
+      }
+    }
+    database_prep_steps {
+      filter_by_difficulty {
+        removed_difficulties: [-1]
+      }
+    }
+    global_random_rotation_range_per_object: [0, 0]
+    rate: 1.0
+  }
+
+  remove_unknown_examples: false
+  remove_environment: false
+  kitti_info_path: "/data/public/uestc8/KITTI_DATASET/kitti_infos_train.pkl"
+  kitti_root_path: "/data/public/uestc8/KITTI_DATASET"
+}
+
+train_config: {
+  optimizer: {
+    adam_optimizer: {
+      learning_rate: {
+        one_cycle: {
+          lr_max: 3e-3  # original 3e-3
+          moms: [0.95, 0.85]
+          div_factor: 10.0  #original 10
+          pct_start: 0.4
+        }
+      }
+      weight_decay: 0.01 # super converge. decrease this when you increase steps. og 0.01
+    }
+    fixed_weight_decay: true
+    use_moving_average: false
+  }
+  steps: 37120 #112215 #113715 #111360 # 619 * 50, super converge. increase this to achieve slightly better results original 30950
+  steps_per_eval: 3712 #7481 # 619 * 5
+  save_checkpoints_secs : 1800 # half hour 1800
+  save_summary_steps : 10
+  enable_mixed_precision: false # for fp16 training, don't use this.
+  loss_scale_factor : 512.0
+  clear_metrics_every_epoch: true
+  detection_2d_path: "../d2_detection_data"
+}
+
+eval_input_reader: {
+  batch_size: 1
+  max_num_epochs : 160
+  prefetch_size : 25
+  max_number_of_voxels: 16000
+  shuffle_points: false
+  num_workers: 3
+  anchor_area_threshold: -1
+  remove_environment: false
+  kitti_info_path: "/data/public/uestc8/KITTI_DATASET/kitti_infos_val.pkl"
+  #kitti_info_path: "/data/public/uestc8/KITTI_DATASET/kitti_infos_test.pkl"
+  kitti_root_path: "/data/public/uestc8/KITTI_DATASET"
+}
+
+model: {
+  second: {
+    voxel_generator {
+      point_cloud_range : [0, -40, -3, 70.4, 40, 1]
+      # point_cloud_range : [0, -32.0, -3, 52.8, 32.0, 1]
+      voxel_size : [0.05, 0.05, 0.1]   # original is 0.05,0.05,0.1
+      max_number_of_points_per_voxel : 5   # original is 5
+    }
+
+    voxel_feature_extractor: {
+      module_class_name: "VoxelFeatureExtractorV3"
+      num_filters: [16]
+      with_distance: false
+      num_input_features: 4
+    }
+    middle_feature_extractor: {
+      module_class_name: "SpMiddleFHD"
+      # num_filters_down1: [] # protobuf don't support empty list.
+      # num_filters_down2: []
+      downsample_factor: 8
+      num_input_features: 4
+    }
+    rpn: {
+      module_class_name: "RPNV2"
+      layer_nums: [5, 5]
+      layer_strides: [1, 2]
+      num_filters: [128, 256]
+      upsample_strides: [1, 2]
+      num_upsample_filters: [256, 256]
+      use_groupnorm: false
+      num_groups: 32
+      num_input_features: 128
+    }
+    loss: {
+      classification_loss: {
+        weighted_sigmoid_focal: {
+          alpha: 0.25
+          gamma: 2.0
+          anchorwise_output: true
+        }
+      }
+      localization_loss: {
+        weighted_smooth_l1: {
+          sigma: 3.0
+          code_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+        }
+      }
+      classification_weight: 1.0   #original 1.0
+      localization_weight: 2.0
+    }
+    # Outputs
+    use_sigmoid_score: true
+    encode_background_as_zeros: true
+    encode_rad_error_by_sin: true
+
+    use_direction_classifier: true # this can help for orientation benchmark
+    direction_loss_weight: 0.2 # enough.
+    use_aux_classifier: false
+    # Loss
+    pos_class_weight: 1.0
+    neg_class_weight: 1.0
+
+    loss_norm_type: NormByNumPositives
+    # Postprocess
+    post_center_limit_range: [0, -40, -3.0, 70.4, 40, 0.0]
+    use_rotate_nms: true
+    use_multi_class_nms: false
+    nms_pre_max_size: 1000
+    nms_post_max_size: 100
+    nms_score_threshold: 0.2
+    nms_iou_threshold: 0.01
+
+    use_bev: false
+    num_point_features: 4
+    without_reflectivity: false
+    box_coder: {
+      ground_box3d_coder: {
+        linear_dim: false
+        encode_angle_vector: false
+      }
+    }
+    target_assigner: {
+      anchor_generators: {
+        anchor_generator_range: {
+          sizes: [1.6, 3.9, 1.56] # wlh
+          anchor_ranges: [0, -40.0, -1.78, 70.4, 40.0, -1.78] # carefully set z center, the original one is -1.78
+          rotations: [0, 1.57] # DON'T modify this unless you are very familiar with my code.
+          matched_threshold : 0.6
+          unmatched_threshold : 0.45
+          class_name: "Car"
+        }
+      }
+      sample_positive_fraction : -1
+      sample_size : 512
+      region_similarity_calculator: {
+        nearest_iou_similarity: {
+        }
+      }
+    }
+  }
+}
+
+
+train_input_reader: {
+  max_num_epochs : 160
+  batch_size: 1
+  prefetch_size : 25
+  max_number_of_voxels: 16000 # to support batchsize=2 in 1080Ti, original 16000
+  shuffle_points: true
+  num_workers: 3
+  groundtruth_localization_noise_std: [1.0, 1.0, 0.5]
+  # groundtruth_rotation_uniform_noise: [-0.3141592654, 0.3141592654]
+  # groundtruth_rotation_uniform_noise: [-1.57, 1.57]
+  groundtruth_rotation_uniform_noise: [-0.78539816, 0.78539816]
+  global_rotation_uniform_noise: [-0.78539816, 0.78539816]
+  global_scaling_uniform_noise: [0.95, 1.05]
+  global_random_rotation_range_per_object: [0, 0] # pi/4 ~ 3pi/4
+  anchor_area_threshold: -1
+  remove_points_after_sample: true
+  groundtruth_points_drop_percentage: 0.0
+  groundtruth_drop_max_keep_points: 15
+  database_sampler {
+    database_info_path: "/data/public/uestc8/KITTI_DATASET/kitti_dbinfos_train.pkl"
+    sample_groups {
+      name_to_max_num {
+        key: "Car"
+        value: 15
+      }
+    }
+    database_prep_steps {
+      filter_by_min_num_points {
+        min_num_point_pairs {
+          key: "Car"
+          value: 5
+        }
+      }
+    }
+    database_prep_steps {
+      filter_by_difficulty {
+        removed_difficulties: [-1]
+      }
+    }
+    global_random_rotation_range_per_object: [0, 0]
+    rate: 1.0
+  }
+
+  remove_unknown_examples: false
+  remove_environment: false
+  kitti_info_path: "/data/public/uestc8/KITTI_DATASET/kitti_infos_train.pkl"
+  kitti_root_path: "/data/public/uestc8/KITTI_DATASET"
+}
+
+train_config: {
+  optimizer: {
+    adam_optimizer: {
+      learning_rate: {
+        one_cycle: {
+          lr_max: 3e-3  # original 3e-3
+          moms: [0.95, 0.85]
+          div_factor: 10.0  #original 10
+          pct_start: 0.4
+        }
+      }
+      weight_decay: 0.01 # super converge. decrease this when you increase steps. og 0.01
+    }
+    fixed_weight_decay: true
+    use_moving_average: false
+  }
+  steps: 37120 #112215 #113715 #111360 # 619 * 50, super converge. increase this to achieve slightly better results original 30950
+  steps_per_eval: 3712 #7481 # 619 * 5
+  save_checkpoints_secs : 1800 # half hour 1800
+  save_summary_steps : 10
+  enable_mixed_precision: false # for fp16 training, don't use this.
+  loss_scale_factor : 512.0
+  clear_metrics_every_epoch: true
+  detection_2d_path: "../d2_detection_data/data"
+}
+
+eval_input_reader: {
+  batch_size: 1
+  max_num_epochs : 160
+  prefetch_size : 25
+  max_number_of_voxels: 16000
+  shuffle_points: false
+  num_workers: 3
+  anchor_area_threshold: -1
+  remove_environment: false
+  kitti_info_path: "/data/public/uestc8/KITTI_DATASET/kitti_infos_val.pkl"
+  #kitti_info_path: "/data/public/uestc8/KITTI_DATASET/kitti_infos_test.pkl"
+  kitti_root_path: "/data/public/uestc8/KITTI_DATASET"
+}
+
+model: {
+  second: {
+    voxel_generator {
+      point_cloud_range : [0, -40, -3, 70.4, 40, 1]
+      # point_cloud_range : [0, -32.0, -3, 52.8, 32.0, 1]
+      voxel_size : [0.05, 0.05, 0.1]   # original is 0.05,0.05,0.1
+      max_number_of_points_per_voxel : 5   # original is 5
+    }
+
+    voxel_feature_extractor: {
+      module_class_name: "VoxelFeatureExtractorV3"
+      num_filters: [16]
+      with_distance: false
+      num_input_features: 4
+    }
+    middle_feature_extractor: {
+      module_class_name: "SpMiddleFHD"
+      # num_filters_down1: [] # protobuf don't support empty list.
+      # num_filters_down2: []
+      downsample_factor: 8
+      num_input_features: 4
+    }
+    rpn: {
+      module_class_name: "RPNV2"
+      layer_nums: [5, 5]
+      layer_strides: [1, 2]
+      num_filters: [128, 256]
+      upsample_strides: [1, 2]
+      num_upsample_filters: [256, 256]
+      use_groupnorm: false
+      num_groups: 32
+      num_input_features: 128
+    }
+    loss: {
+      classification_loss: {
+        weighted_sigmoid_focal: {
+          alpha: 0.25
+          gamma: 2.0
+          anchorwise_output: true
+        }
+      }
+      localization_loss: {
+        weighted_smooth_l1: {
+          sigma: 3.0
+          code_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+        }
+      }
+      classification_weight: 1.0   #original 1.0
+      localization_weight: 2.0
+    }
+    # Outputs
+    use_sigmoid_score: true
+    encode_background_as_zeros: true
+    encode_rad_error_by_sin: true
+
+    use_direction_classifier: true # this can help for orientation benchmark
+    direction_loss_weight: 0.2 # enough.
+    use_aux_classifier: false
+    # Loss
+    pos_class_weight: 1.0
+    neg_class_weight: 1.0
+
+    loss_norm_type: NormByNumPositives
+    # Postprocess
+    post_center_limit_range: [0, -40, -3.0, 70.4, 40, 0.0]
+    use_rotate_nms: true
+    use_multi_class_nms: false
+    nms_pre_max_size: 1000
+    nms_post_max_size: 100
+    nms_score_threshold: 0.2
+    nms_iou_threshold: 0.01
+
+    use_bev: false
+    num_point_features: 4
+    without_reflectivity: false
+    box_coder: {
+      ground_box3d_coder: {
+        linear_dim: false
+        encode_angle_vector: false
+      }
+    }
+    target_assigner: {
+      anchor_generators: {
+        anchor_generator_range: {
+          sizes: [1.6, 3.9, 1.56] # wlh
+          anchor_ranges: [0, -40.0, -1.78, 70.4, 40.0, -1.78] # carefully set z center, the original one is -1.78
+          rotations: [0, 1.57] # DON'T modify this unless you are very familiar with my code.
+          matched_threshold : 0.6
+          unmatched_threshold : 0.45
+          class_name: "Car"
+        }
+      }
+      sample_positive_fraction : -1
+      sample_size : 512
+      region_similarity_calculator: {
+        nearest_iou_similarity: {
+        }
+      }
+    }
+  }
+}
+
+
+train_input_reader: {
+  max_num_epochs : 160
+  batch_size: 1
+  prefetch_size : 25
+  max_number_of_voxels: 16000 # to support batchsize=2 in 1080Ti, original 16000
+  shuffle_points: true
+  num_workers: 3
+  groundtruth_localization_noise_std: [1.0, 1.0, 0.5]
+  # groundtruth_rotation_uniform_noise: [-0.3141592654, 0.3141592654]
+  # groundtruth_rotation_uniform_noise: [-1.57, 1.57]
+  groundtruth_rotation_uniform_noise: [-0.78539816, 0.78539816]
+  global_rotation_uniform_noise: [-0.78539816, 0.78539816]
+  global_scaling_uniform_noise: [0.95, 1.05]
+  global_random_rotation_range_per_object: [0, 0] # pi/4 ~ 3pi/4
+  anchor_area_threshold: -1
+  remove_points_after_sample: true
+  groundtruth_points_drop_percentage: 0.0
+  groundtruth_drop_max_keep_points: 15
+  database_sampler {
+    database_info_path: "/data/public/uestc8/KITTI_DATASET/kitti_dbinfos_train.pkl"
+    sample_groups {
+      name_to_max_num {
+        key: "Car"
+        value: 15
+      }
+    }
+    database_prep_steps {
+      filter_by_min_num_points {
+        min_num_point_pairs {
+          key: "Car"
+          value: 5
+        }
+      }
+    }
+    database_prep_steps {
+      filter_by_difficulty {
+        removed_difficulties: [-1]
+      }
+    }
+    global_random_rotation_range_per_object: [0, 0]
+    rate: 1.0
+  }
+
+  remove_unknown_examples: false
+  remove_environment: false
+  kitti_info_path: "/data/public/uestc8/KITTI_DATASET/kitti_infos_train.pkl"
+  kitti_root_path: "/data/public/uestc8/KITTI_DATASET"
+}
+
+train_config: {
+  optimizer: {
+    adam_optimizer: {
+      learning_rate: {
+        one_cycle: {
+          lr_max: 3e-3  # original 3e-3
+          moms: [0.95, 0.85]
+          div_factor: 10.0  #original 10
+          pct_start: 0.4
+        }
+      }
+      weight_decay: 0.01 # super converge. decrease this when you increase steps. og 0.01
+    }
+    fixed_weight_decay: true
+    use_moving_average: false
+  }
+  steps: 37120 #112215 #113715 #111360 # 619 * 50, super converge. increase this to achieve slightly better results original 30950
+  steps_per_eval: 3712 #7481 # 619 * 5
+  save_checkpoints_secs : 1800 # half hour 1800
+  save_summary_steps : 10
+  enable_mixed_precision: false # for fp16 training, don't use this.
+  loss_scale_factor : 512.0
+  clear_metrics_every_epoch: true
+  detection_2d_path: "../d2_detection_data/data"
+}
+
+eval_input_reader: {
+  batch_size: 1
+  max_num_epochs : 160
+  prefetch_size : 25
+  max_number_of_voxels: 16000
+  shuffle_points: false
+  num_workers: 3
+  anchor_area_threshold: -1
+  remove_environment: false
+  kitti_info_path: "/data/public/uestc8/KITTI_DATASET/kitti_infos_val.pkl"
+  #kitti_info_path: "/data/public/uestc8/KITTI_DATASET/kitti_infos_test.pkl"
+  kitti_root_path: "/data/public/uestc8/KITTI_DATASET"
+}
+
+now it is 50 steps  and the cls_loss is : tensor(1509.0055, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003000725556911313
+now it is 100 steps  and the cls_loss is : tensor(1130.1580, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.000300296159683897
+now it is 150 steps  and the cls_loss is : tensor(803.9803, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003006708197788306
+now it is 200 steps  and the cls_loss is : tensor(657.2486, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003011964940447371
+now it is 250 steps  and the cls_loss is : tensor(498.5607, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003018731236492261
+now it is 300 steps  and the cls_loss is : tensor(450.1539, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003027006328652909
+now it is 350 steps  and the cls_loss is : tensor(144.8736, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003036789290797896
+now it is 400 steps  and the cls_loss is : tensor(143.1450, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003048079028038046
+now it is 450 steps  and the cls_loss is : tensor(60.5904, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.00030608742768490054
+now it is 500 steps  and the cls_loss is : tensor(21.6165, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003075173605212619
+now it is 550 steps  and the cls_loss is : tensor(20.3506, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003090975412777231
+now it is 600 steps  and the cls_loss is : tensor(10.7231, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.000310827793103677
+now it is 650 steps  and the cls_loss is : tensor(7.9081, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.00031270792235286874
+now it is 700 steps  and the cls_loss is : tensor(6.5614, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003147377186050681
+now it is 750 steps  and the cls_loss is : tensor(4.8681, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.00031691695468961945
+now it is 800 steps  and the cls_loss is : tensor(2.1035, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.00031924538671086484
+now it is 850 steps  and the cls_loss is : tensor(2.3070, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003217227540754427
+now it is 900 steps  and the cls_loss is : tensor(2.0601, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003243487795214512
+now it is 950 steps  and the cls_loss is : tensor(1.3856, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.00032712316914947906
+now it is 1000 steps  and the cls_loss is : tensor(1.2089, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003300456124554988
+now it is 1050 steps  and the cls_loss is : tensor(1.2529, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003331157823656169
+now it is 1100 steps  and the cls_loss is : tensor(1.0243, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.00033633333527267927
+now it is 1150 steps  and the cls_loss is : tensor(1.0103, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.00033969791107472903
+now it is 1200 steps  and the cls_loss is : tensor(0.9725, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003432091332153048
+now it is 1250 steps  and the cls_loss is : tensor(0.9183, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003468666087255885
+now it is 1300 steps  and the cls_loss is : tensor(0.8762, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.00035066992826837977
+now it is 1350 steps  and the cls_loss is : tensor(0.8730, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.00035461866618391544
+now it is 1400 steps  and the cls_loss is : tensor(0.7803, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003587123805375023
+now it is 1450 steps  and the cls_loss is : tensor(0.9194, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003629506131689812
+now it is 1500 steps  and the cls_loss is : tensor(0.8207, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003673328897440013
+now it is 1550 steps  and the cls_loss is : tensor(0.8384, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003718587198071068
+now it is 1600 steps  and the cls_loss is : tensor(0.7755, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.00037652759683663023
+now it is 1650 steps  and the cls_loss is : tensor(0.7231, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003813389983013779
+now it is 1700 steps  and the cls_loss is : tensor(0.7165, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003862923857191132
+now it is 1750 steps  and the cls_loss is : tensor(0.7796, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003913872047168203
+now it is 1800 steps  and the cls_loss is : tensor(0.6747, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003966228850927501
+now it is 1850 steps  and the cls_loss is : tensor(0.6637, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.00040199884088023413
+now it is 1900 steps  and the cls_loss is : tensor(0.6161, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.00040751447041326855
+now it is 1950 steps  and the cls_loss is : tensor(0.5672, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.00041316915639384635
+now it is 2000 steps  and the cls_loss is : tensor(0.5502, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0004189622659610476
+now it is 2050 steps  and the cls_loss is : tensor(0.5042, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.00042489315076186694
+now it is 2100 steps  and the cls_loss is : tensor(0.4147, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.00043096114702377607
+now it is 2150 steps  and the cls_loss is : tensor(0.3157, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.00043716557562901125
+now it is 2200 steps  and the cls_loss is : tensor(0.2407, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.00044350574219057925
+now it is 2250 steps  and the cls_loss is : tensor(0.2025, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0004499809371299713
+now it is 2300 steps  and the cls_loss is : tensor(0.1348, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.00045659043575657903
+now it is 2350 steps  and the cls_loss is : tensor(0.1500, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.00046333349834879866
+now it is 2400 steps  and the cls_loss is : tensor(0.1663, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.00047020937023682
+now it is 2450 steps  and the cls_loss is : tensor(0.1156, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0004772172818870873
+now it is 2500 steps  and the cls_loss is : tensor(0.0884, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.00048435644898842415
+now it is 2550 steps  and the cls_loss is : tensor(0.0963, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0004916260725398116
+now it is 2600 steps  and the cls_loss is : tensor(0.0800, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0004990253389398113
+now it is 2650 steps  and the cls_loss is : tensor(0.1329, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0005065534200776206
+now it is 2700 steps  and the cls_loss is : tensor(0.0860, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0005142094734257559
+now it is 2750 steps  and the cls_loss is : tensor(0.1163, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0005219926421343433
+now it is 2800 steps  and the cls_loss is : tensor(0.1309, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0005299020551270185
+now it is 2850 steps  and the cls_loss is : tensor(0.1202, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0005379368271984128
+now it is 2900 steps  and the cls_loss is : tensor(0.0875, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0005460960591132263
+now it is 2950 steps  and the cls_loss is : tensor(0.1418, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0005543788377068678
+now it is 3000 steps  and the cls_loss is : tensor(0.1500, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0005627842359876515
+now it is 3050 steps  and the cls_loss is : tensor(0.1580, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0005713113132405499
+now it is 3100 steps  and the cls_loss is : tensor(0.1117, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0005799591151324696
+now it is 3150 steps  and the cls_loss is : tensor(0.2790, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0005887266738190643
+now it is 3200 steps  and the cls_loss is : tensor(0.1076, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0005976130080530494
+now it is 3250 steps  and the cls_loss is : tensor(0.0972, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0006066171232940259
+now it is 3300 steps  and the cls_loss is : tensor(0.1079, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0006157380118197828
+now it is 3350 steps  and the cls_loss is : tensor(0.0808, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0006249746528390822
+now it is 3400 steps  and the cls_loss is : tensor(0.0776, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0006343260126059026
+now it is 3450 steps  and the cls_loss is : tensor(0.0742, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0006437910445351355
+now it is 3500 steps  and the cls_loss is : tensor(0.0676, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0006533686893197138
+now it is 3550 steps  and the cls_loss is : tensor(0.1510, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.000663057875049171
+now it is 3600 steps  and the cls_loss is : tensor(0.1915, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0006728575173296052
+now it is 3650 steps  and the cls_loss is : tensor(0.1201, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0006827665194050424
+now it is 3700 steps  and the cls_loss is : tensor(0.1611, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.000692783772280184
+#################################
+# EVAL
+#################################
+Generate output labels...
+validation_loss: 0.12344081660596999
+generate label finished(5.76/s). start eval:
+Car AP@0.70, 0.70, 0.70:
+bbox AP:99.26, 93.88, 91.06
+bev  AP:96.44, 92.43, 89.72
+3d   AP:92.62, 81.48, 78.09
+aos  AP:99.09, 93.42, 90.40
+Car AP@0.70, 0.50, 0.50:
+bbox AP:99.26, 93.88, 91.06
+bev  AP:99.38, 96.40, 95.80
+3d   AP:99.36, 96.33, 93.59
+aos  AP:99.09, 93.42, 90.40
+
+model: {
+  second: {
+    voxel_generator {
+      point_cloud_range : [0, -40, -3, 70.4, 40, 1]
+      # point_cloud_range : [0, -32.0, -3, 52.8, 32.0, 1]
+      voxel_size : [0.05, 0.05, 0.1]   # original is 0.05,0.05,0.1
+      max_number_of_points_per_voxel : 5   # original is 5
+    }
+
+    voxel_feature_extractor: {
+      module_class_name: "VoxelFeatureExtractorV3"
+      num_filters: [16]
+      with_distance: false
+      num_input_features: 4
+    }
+    middle_feature_extractor: {
+      module_class_name: "SpMiddleFHD"
+      # num_filters_down1: [] # protobuf don't support empty list.
+      # num_filters_down2: []
+      downsample_factor: 8
+      num_input_features: 4
+    }
+    rpn: {
+      module_class_name: "RPNV2"
+      layer_nums: [5, 5]
+      layer_strides: [1, 2]
+      num_filters: [128, 256]
+      upsample_strides: [1, 2]
+      num_upsample_filters: [256, 256]
+      use_groupnorm: false
+      num_groups: 32
+      num_input_features: 128
+    }
+    loss: {
+      classification_loss: {
+        weighted_sigmoid_focal: {
+          alpha: 0.25
+          gamma: 2.0
+          anchorwise_output: true
+        }
+      }
+      localization_loss: {
+        weighted_smooth_l1: {
+          sigma: 3.0
+          code_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+        }
+      }
+      classification_weight: 1.0   #original 1.0
+      localization_weight: 2.0
+    }
+    # Outputs
+    use_sigmoid_score: true
+    encode_background_as_zeros: true
+    encode_rad_error_by_sin: true
+
+    use_direction_classifier: true # this can help for orientation benchmark
+    direction_loss_weight: 0.2 # enough.
+    use_aux_classifier: false
+    # Loss
+    pos_class_weight: 1.0
+    neg_class_weight: 1.0
+
+    loss_norm_type: NormByNumPositives
+    # Postprocess
+    post_center_limit_range: [0, -40, -3.0, 70.4, 40, 0.0]
+    use_rotate_nms: true
+    use_multi_class_nms: false
+    nms_pre_max_size: 1000
+    nms_post_max_size: 100
+    nms_score_threshold: 0.2
+    nms_iou_threshold: 0.01
+
+    use_bev: false
+    num_point_features: 4
+    without_reflectivity: false
+    box_coder: {
+      ground_box3d_coder: {
+        linear_dim: false
+        encode_angle_vector: false
+      }
+    }
+    target_assigner: {
+      anchor_generators: {
+        anchor_generator_range: {
+          sizes: [1.6, 3.9, 1.56] # wlh
+          anchor_ranges: [0, -40.0, -1.78, 70.4, 40.0, -1.78] # carefully set z center, the original one is -1.78
+          rotations: [0, 1.57] # DON'T modify this unless you are very familiar with my code.
+          matched_threshold : 0.6
+          unmatched_threshold : 0.45
+          class_name: "Car"
+        }
+      }
+      sample_positive_fraction : -1
+      sample_size : 512
+      region_similarity_calculator: {
+        nearest_iou_similarity: {
+        }
+      }
+    }
+  }
+}
+
+
+train_input_reader: {
+  max_num_epochs : 160
+  batch_size: 1
+  prefetch_size : 25
+  max_number_of_voxels: 16000 # to support batchsize=2 in 1080Ti, original 16000
+  shuffle_points: true
+  num_workers: 3
+  groundtruth_localization_noise_std: [1.0, 1.0, 0.5]
+  # groundtruth_rotation_uniform_noise: [-0.3141592654, 0.3141592654]
+  # groundtruth_rotation_uniform_noise: [-1.57, 1.57]
+  groundtruth_rotation_uniform_noise: [-0.78539816, 0.78539816]
+  global_rotation_uniform_noise: [-0.78539816, 0.78539816]
+  global_scaling_uniform_noise: [0.95, 1.05]
+  global_random_rotation_range_per_object: [0, 0] # pi/4 ~ 3pi/4
+  anchor_area_threshold: -1
+  remove_points_after_sample: true
+  groundtruth_points_drop_percentage: 0.0
+  groundtruth_drop_max_keep_points: 15
+  database_sampler {
+    database_info_path: "/data/public/uestc8/KITTI_DATASET/kitti_dbinfos_train.pkl"
+    sample_groups {
+      name_to_max_num {
+        key: "Car"
+        value: 15
+      }
+    }
+    database_prep_steps {
+      filter_by_min_num_points {
+        min_num_point_pairs {
+          key: "Car"
+          value: 5
+        }
+      }
+    }
+    database_prep_steps {
+      filter_by_difficulty {
+        removed_difficulties: [-1]
+      }
+    }
+    global_random_rotation_range_per_object: [0, 0]
+    rate: 1.0
+  }
+
+  remove_unknown_examples: false
+  remove_environment: false
+  kitti_info_path: "/data/public/uestc8/KITTI_DATASET/kitti_infos_train.pkl"
+  kitti_root_path: "/data/public/uestc8/KITTI_DATASET"
+}
+
+train_config: {
+  optimizer: {
+    adam_optimizer: {
+      learning_rate: {
+        one_cycle: {
+          lr_max: 3e-3  # original 3e-3
+          moms: [0.95, 0.85]
+          div_factor: 10.0  #original 10
+          pct_start: 0.4
+        }
+      }
+      weight_decay: 0.01 # super converge. decrease this when you increase steps. og 0.01
+    }
+    fixed_weight_decay: true
+    use_moving_average: false
+  }
+  steps: 37120 #112215 #113715 #111360 # 619 * 50, super converge. increase this to achieve slightly better results original 30950
+  steps_per_eval: 3712 #7481 # 619 * 5
+  save_checkpoints_secs : 1800 # half hour 1800
+  save_summary_steps : 10
+  enable_mixed_precision: false # for fp16 training, don't use this.
+  loss_scale_factor : 512.0
+  clear_metrics_every_epoch: true
+  detection_2d_path: "../d2_detection_data/data"
+}
+
+eval_input_reader: {
+  batch_size: 1
+  max_num_epochs : 160
+  prefetch_size : 25
+  max_number_of_voxels: 16000
+  shuffle_points: false
+  num_workers: 3
+  anchor_area_threshold: -1
+  remove_environment: false
+  kitti_info_path: "/data/public/uestc8/KITTI_DATASET/kitti_infos_val.pkl"
+  #kitti_info_path: "/data/public/uestc8/KITTI_DATASET/kitti_infos_test.pkl"
+  kitti_root_path: "/data/public/uestc8/KITTI_DATASET"
+}
+
+now it is 50 steps  and the cls_loss is : tensor(1471.5914, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003000725556911313
+now it is 100 steps  and the cls_loss is : tensor(984.9777, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.000300296159683897
+now it is 150 steps  and the cls_loss is : tensor(634.7609, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003006708197788306
+now it is 200 steps  and the cls_loss is : tensor(507.1985, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003011964940447371
+now it is 250 steps  and the cls_loss is : tensor(359.5688, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003018731236492261
+now it is 300 steps  and the cls_loss is : tensor(303.8636, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003027006328652909
+now it is 350 steps  and the cls_loss is : tensor(89.7220, device='cuda:0', grad_fn=<DivBackward0>) learning_rate:  0.0003036789290797896

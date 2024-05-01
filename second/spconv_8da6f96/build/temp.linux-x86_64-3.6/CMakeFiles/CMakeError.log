@@ -1,0 +1,112 @@
+Compiling the CUDA compiler identification source file "CMakeCUDACompilerId.cu" failed.
+Compiler: /usr/local/cuda-10.2/bin/nvcc 
+Build flags: "--expt-relaxed-constexpr"
+Id flags: --keep;--keep-dir;tmp -v
+
+The output was:
+1
+#$ _NVVM_BRANCH_=nvvm
+#$ _SPACE_= 
+#$ _CUDART_=cudart
+#$ _HERE_=/usr/local/cuda-10.2/bin
+#$ _THERE_=/usr/local/cuda-10.2/bin
+#$ _TARGET_SIZE_=
+#$ _TARGET_DIR_=
+#$ _TARGET_DIR_=targets/x86_64-linux
+#$ TOP=/usr/local/cuda-10.2/bin/..
+#$ NVVMIR_LIBRARY_DIR=/usr/local/cuda-10.2/bin/../nvvm/libdevice
+#$ LD_LIBRARY_PATH=/usr/local/cuda-10.2/bin/../lib:/home/uestc8/JYJ/TensorRT-7.0.0.11/targets/x86_64-linux-gnu/lib:
+#$ PATH=/usr/local/cuda-10.2/bin/../nvvm/bin:/usr/local/cuda-10.2/bin:/home/uestc8/.local/bin:/usr/local/include/opencv4/opencv2:/usr/local/include/opencv4:/usr/local/cuda-10.2/bin:/home/uestc8/.conda/envs/THB/bin:/usr/local/anaconda3/condabin:/opt/python3.7.8/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+#$ INCLUDES="-I/usr/local/cuda-10.2/bin/../targets/x86_64-linux/include"  
+#$ LIBRARIES=  "-L/usr/local/cuda-10.2/bin/../targets/x86_64-linux/lib/stubs" "-L/usr/local/cuda-10.2/bin/../targets/x86_64-linux/lib"
+#$ CUDAFE_FLAGS=
+#$ PTXAS_FLAGS=
+nvcc fatal   : Don't know what to do with '"--expt-relaxed-constexpr"'
+
+
+Compiling the CUDA compiler identification source file "CMakeCUDACompilerId.cu" failed.
+Compiler: /usr/local/cuda-10.2/bin/nvcc 
+Build flags: "--expt-relaxed-constexpr"
+Id flags:  -v
+
+The output was:
+1
+#$ _NVVM_BRANCH_=nvvm
+#$ _SPACE_= 
+#$ _CUDART_=cudart
+#$ _HERE_=/usr/local/cuda-10.2/bin
+#$ _THERE_=/usr/local/cuda-10.2/bin
+#$ _TARGET_SIZE_=
+#$ _TARGET_DIR_=
+#$ _TARGET_DIR_=targets/x86_64-linux
+#$ TOP=/usr/local/cuda-10.2/bin/..
+#$ NVVMIR_LIBRARY_DIR=/usr/local/cuda-10.2/bin/../nvvm/libdevice
+#$ LD_LIBRARY_PATH=/usr/local/cuda-10.2/bin/../lib:/home/uestc8/JYJ/TensorRT-7.0.0.11/targets/x86_64-linux-gnu/lib:
+#$ PATH=/usr/local/cuda-10.2/bin/../nvvm/bin:/usr/local/cuda-10.2/bin:/home/uestc8/.local/bin:/usr/local/include/opencv4/opencv2:/usr/local/include/opencv4:/usr/local/cuda-10.2/bin:/home/uestc8/.conda/envs/THB/bin:/usr/local/anaconda3/condabin:/opt/python3.7.8/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+#$ INCLUDES="-I/usr/local/cuda-10.2/bin/../targets/x86_64-linux/include"  
+#$ LIBRARIES=  "-L/usr/local/cuda-10.2/bin/../targets/x86_64-linux/lib/stubs" "-L/usr/local/cuda-10.2/bin/../targets/x86_64-linux/lib"
+#$ CUDAFE_FLAGS=
+#$ PTXAS_FLAGS=
+nvcc fatal   : Don't know what to do with '"--expt-relaxed-constexpr"'
+
+
+Performing C++ SOURCE FILE Test CMAKE_HAVE_LIBC_PTHREAD failed with the following output:
+Change Dir: /home/uestc8/THB/CLOCs/second/spconv_8da6f96/build/temp.linux-x86_64-3.6/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_5c4d5/fast && /usr/bin/make  -f CMakeFiles/cmTC_5c4d5.dir/build.make CMakeFiles/cmTC_5c4d5.dir/build
+make[1]: 进入目录“/home/uestc8/THB/CLOCs/second/spconv_8da6f96/build/temp.linux-x86_64-3.6/CMakeFiles/CMakeTmp”
+Building CXX object CMakeFiles/cmTC_5c4d5.dir/src.cxx.o
+/usr/bin/c++ -DCMAKE_HAVE_LIBC_PTHREAD  -DVERSION_INFO=\"1.0\"  -o CMakeFiles/cmTC_5c4d5.dir/src.cxx.o -c /home/uestc8/THB/CLOCs/second/spconv_8da6f96/build/temp.linux-x86_64-3.6/CMakeFiles/CMakeTmp/src.cxx
+Linking CXX executable cmTC_5c4d5
+/home/uestc8/.conda/envs/THB/bin/cmake -E cmake_link_script CMakeFiles/cmTC_5c4d5.dir/link.txt --verbose=1
+/usr/bin/c++ -DVERSION_INFO=\"1.0\"  CMakeFiles/cmTC_5c4d5.dir/src.cxx.o -o cmTC_5c4d5 
+/usr/bin/ld: CMakeFiles/cmTC_5c4d5.dir/src.cxx.o: in function `main':
+src.cxx:(.text+0x46): undefined reference to `pthread_create'
+/usr/bin/ld: src.cxx:(.text+0x52): undefined reference to `pthread_detach'
+/usr/bin/ld: src.cxx:(.text+0x5e): undefined reference to `pthread_cancel'
+/usr/bin/ld: src.cxx:(.text+0x6f): undefined reference to `pthread_join'
+collect2: error: ld returned 1 exit status
+make[1]: *** [CMakeFiles/cmTC_5c4d5.dir/build.make:106：cmTC_5c4d5] 错误 1
+make[1]: 离开目录“/home/uestc8/THB/CLOCs/second/spconv_8da6f96/build/temp.linux-x86_64-3.6/CMakeFiles/CMakeTmp”
+make: *** [Makefile:140：cmTC_5c4d5/fast] 错误 2
+
+
+Source file was:
+#include <pthread.h>
+
+static void* test_func(void* data)
+{
+  return data;
+}
+
+int main(void)
+{
+  pthread_t thread;
+  pthread_create(&thread, NULL, test_func, NULL);
+  pthread_detach(thread);
+  pthread_cancel(thread);
+  pthread_join(thread, NULL);
+  pthread_atfork(NULL, NULL, NULL);
+  pthread_exit(NULL);
+
+  return 0;
+}
+
+Determining if the function pthread_create exists in the pthreads failed with the following output:
+Change Dir: /home/uestc8/THB/CLOCs/second/spconv_8da6f96/build/temp.linux-x86_64-3.6/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_dc4f4/fast && /usr/bin/make  -f CMakeFiles/cmTC_dc4f4.dir/build.make CMakeFiles/cmTC_dc4f4.dir/build
+make[1]: 进入目录“/home/uestc8/THB/CLOCs/second/spconv_8da6f96/build/temp.linux-x86_64-3.6/CMakeFiles/CMakeTmp”
+Building CXX object CMakeFiles/cmTC_dc4f4.dir/CheckFunctionExists.cxx.o
+/usr/bin/c++   -DVERSION_INFO=\"1.0\" -DCHECK_FUNCTION_EXISTS=pthread_create -o CMakeFiles/cmTC_dc4f4.dir/CheckFunctionExists.cxx.o -c /home/uestc8/THB/CLOCs/second/spconv_8da6f96/build/temp.linux-x86_64-3.6/CMakeFiles/CheckLibraryExists/CheckFunctionExists.cxx
+Linking CXX executable cmTC_dc4f4
+/home/uestc8/.conda/envs/THB/bin/cmake -E cmake_link_script CMakeFiles/cmTC_dc4f4.dir/link.txt --verbose=1
+/usr/bin/c++ -DVERSION_INFO=\"1.0\" -DCHECK_FUNCTION_EXISTS=pthread_create CMakeFiles/cmTC_dc4f4.dir/CheckFunctionExists.cxx.o -o cmTC_dc4f4  -lpthreads 
+/usr/bin/ld: 找不到 -lpthreads
+collect2: error: ld returned 1 exit status
+make[1]: *** [CMakeFiles/cmTC_dc4f4.dir/build.make:106：cmTC_dc4f4] 错误 1
+make[1]: 离开目录“/home/uestc8/THB/CLOCs/second/spconv_8da6f96/build/temp.linux-x86_64-3.6/CMakeFiles/CMakeTmp”
+make: *** [Makefile:140：cmTC_dc4f4/fast] 错误 2
+
+
+
